@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>CampusCart</title>
+    <style>
+        * { box-sizing: border-box; }
+        body {
+            margin: 0;
+            font-family: Arial, sans-serif;
+            color: #172033;
+            background: #f3f6fb;
+        }
+        header {
+            padding: 42px 8%;
+            color: white;
+            background: linear-gradient(135deg, #162b63, #2563eb);
+        }
+        header h1 { margin: 0 0 8px; font-size: 42px; }
+        header p { margin: 0; opacity: .9; }
+        main {
+            width: min(1100px, 90%);
+            margin: 32px auto;
+        }
+        h2 { margin-top: 34px; }
+        #equipment {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: 18px;
+        }
+        .card, form, .table-box {
+            background: white;
+            border-radius: 14px;
+            padding: 20px;
+            box-shadow: 0 5px 20px #18315314;
+        }
+        .card h3 { margin: 6px 0; }
+        .category {
+            color: #2563eb;
+            font-size: 13px;
+            font-weight: bold;
+            text-transform: uppercase;
+        }
+        .units { color: #475569; }
+        form {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 15px;
+        }
+        label {
+            display: flex;
+            flex-direction: column;
+            gap: 7px;
+            font-weight: bold;
+        }
+        input, select, button {
+            padding: 12px;
+            border-radius: 8px;
+            border: 1px solid #cbd5e1;
+            font: inherit;
+        }
+        button {
+            border: 0;
+            color: white;
+            background: #2563eb;
+            cursor: pointer;
+            font-weight: bold;
+        }
+        button:hover { background: #1d4ed8; }
+        form button { grid-column: 1 / -1; }
+        .message {
+            display: none;
+            margin: 16px 0;
+            padding: 13px;
+            border-radius: 8px;
+        }
+        .success { display: block; color: #166534; background: #dcfce7; }
+        .error { display: block; color: #991b1b; background: #fee2e2; }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        th, td {
+            padding: 12px;
+            border-bottom: 1px solid #e2e8f0;
+            text-align: left;
+        }
+        th { color: #475569; }
+        @media (max-width: 650px) {
+            form { grid-template-columns: 1fr; }
+            header h1 { font-size: 34px; }
+            .table-box { overflow-x: auto; }
+        }
+    </style>
+</head>
+<body>
+<header>
+    <h1>CampusCart</h1>
+    <p>Reserve university equipment quickly and reliably.</p>
+</header>
+
+<main>
+    <h2>Available equipment</h2>
+    <section id="equipment">Loading equipment...</section>
+
+    <h2>Create a reservation</h2>
+    <form id="reservation-form">
+        <label>
+            Equipment
+            <select id="equipment-id" required></select>
+        </label>
+
+        <label>
+            Quantity
+            <input id="quantity" type="number" value="1" min="1" required>
+        </label>
+
+        <label>
+            Student name
+            <input id="student-name" required minlength="2">
+        </label>
+
+        <label>
+            Student email
+            <input id="student-email" type="email" required>
+        </label>
+
+        <label>
+            Start date
+            <input id="start-date" type="date" required>
+        </label>
+
+        <label>
+            End date
+            <input id="end-date" type="date" required>
+        </label>
+
+        <button type="submit">Reserve equipment</button>
+    </form>
+
+    <div id="message" class="message"></div>
+
+    <h2>Current reservations</h2>
+    <div class="table-box">
+        <table>
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Equipment</th>
+                    <th>Student</th>
+                    <th>Dates</th>
+                    <th>Quantity</th>
+                </tr>
+            </thead>
+            <tbody id="reservations"></tbody>
+        </table>
+    </div>
+</main>
+
+<script>
+    const equipmentNames = new Map();
+    const equipmentSection = document.querySelector("#equipment");
+    const equipmentSelect = document.querySelector("#equipment-id");
+    const reservationRows = document.querySelector("#reservations");
+    const form = document.querySelector("#reservation-form");
+    const message = document.querySelector("#message");
+
+    async function api(url, options = {}) {
+        const response = await fetch(url, options);
+        const data = await response.json();
+
+        if (!response.ok) {
+            throw new Error(data.detail || "Request failed");
+        }
+
+        return data;
+    }
+
+    async function loadEquipment() {
+        const items = await api("/api/catalog/equipment");
+        equipmentSection.innerHTML = "";
+        equipmentSelect.innerHTML = "";
+
+        items.forEach(item => {
+            equipmentNames.set(item.id, item.name);
+
+            equipmentSection.insertAdjacentHTML("beforeend", `
+                <article class="card">
+                    <span class="category">${item.category}</span>
+                    <h3>${item.name}</h3>
+                    <p>${item.description}</p>
+                    <p class="units">${item.total_units} unit(s) owned</p>
+                    <button onclick="selectEquipment(${item.id})">Reserve</button>
+                </article>
+            `);
+
+            equipmentSelect.insertAdjacentHTML(
+                "beforeend",
+                `<option value="${item.id}">${item.name}</option>`
+            );
+        });
+    }
+
+    function selectEquipment(id) {
+        equipmentSelect.value = id;
+        form.scrollIntoView({ behavior: "smooth" });
+    }
+
+    async function loadReservations() {
+        const reservations = await api("/api/reservations/reservations");
+        reservationRows.innerHTML = reservations.length ? "" :
+            `<tr><td colspan="5">No reservations yet.</td></tr>`;
+
+        reservations.forEach(item => {
+            reservationRows.insertAdjacentHTML("beforeend", `
+                <tr>
+                    <td>${item.id}</td>
+                    <td>${equipmentNames.get(item.equipment_id) || item.equipment_id}</td>
+                    <td>${item.student_name}</td>
+                    <td>${item.start_date} to ${item.end_date}</td>
+                    <td>${item.quantity}</td>
+                </tr>
+            `);
+        });
+    }
+
+    form.addEventListener("submit", async event => {
+        event.preventDefault();
+        message.className = "message";
+
+        const payload = {
+            equipment_id: Number(equipmentSelect.value),
+            quantity: Number(document.querySelector("#quantity").value),
+            student_name: document.querySelector("#student-name").value,
+            student_email: document.querySelector("#student-email").value,
+            start_date: document.querySelector("#start-date").value,
+            end_date: document.querySelector("#end-date").value
+        };
+
+        try {
+            await api("/api/reservations/reservations", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(payload)
+            });
+
+            message.textContent = "Reservation created successfully.";
+            message.className = "message success";
+            form.reset();
+            document.querySelector("#quantity").value = 1;
+            await loadReservations();
+        } catch (error) {
+            message.textContent = error.message;
+            message.className = "message error";
+        }
+    });
+
+    async function start() {
+        try {
+            await loadEquipment();
+            await loadReservations();
+        } catch (error) {
+            equipmentSection.textContent = `Unable to load application: ${error.message}`;
+        }
+    }
+
+    start();
+</script>
+</body>
+</html>
